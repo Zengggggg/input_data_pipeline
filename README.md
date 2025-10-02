@@ -22,9 +22,9 @@ input-data-pipline/
 │
 ├─ out/ # thư mục output (JSONL + file nhị phân)
 │ ├─ youtube.jsonl
-│ ├─ comments.jsonl
-│ ├─ audio.jsonl
-│ └─ audio/ # chứa file wav được ghi
+│
+│
+│
 │
 ├─ requirements.txt # thư viện Python cần thiết
 └─ README.md
