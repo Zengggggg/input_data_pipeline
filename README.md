@@ -23,9 +23,6 @@ input-data-pipline/
 ├─ out/ # thư mục output (JSONL + file nhị phân)
 │ ├─ youtube.jsonl
 │
-│
-│
-│
 ├─ requirements.txt # thư viện Python cần thiết
 └─ README.md
 ```
