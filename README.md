@@ -28,8 +28,6 @@ input-data-pipline/
 Yêu cầu:
 - Python 3.8+
 - `ffmpeg` cài sẵn trong hệ thống (dùng cho audio collector)
-- Tesseract OCR (dùng cho comments_ocr)
-
 Cài package Python:
 ```bash
 pip install -r requirements.txt
