@@ -1,9 +1,9 @@
 # Input Collectors
 
 Repo này chứa các **collector đầu vào** phục vụ pipeline phân tích nội dung.  
-Nhiệm vụ của repo: chuẩn hoá việc thu thập dữ liệu từ nhiều nguồn khác nhau (YouTube transcript, ảnh bình luận, audio hệ thống) thành **JSONL** thống nhất.
+**Nhiệm vụ của repo:** chuẩn hoá việc thu thập dữ liệu từ nhiều nguồn khác nhau (YouTube transcript, ảnh bình luận, audio hệ thống) thành **JSONL** thống nhất.
 
----
+
 
 ## 📂 Cấu trúc thư mục
 ```
@@ -29,7 +29,7 @@ input-data-pipline/
 ├─ requirements.txt # thư viện Python cần thiết
 └─ README.md
 ```
----
+
 
 ## 🛠 Cài đặt
 
