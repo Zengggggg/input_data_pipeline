@@ -13,12 +13,7 @@ input-data-pipline/
 │ └─ utils.py # tiện ích: gen_id, now_iso, youtube_id
 │
 ├─ inputs/
-│ ├─ youtube_transcript/ # collector lấy transcript YouTube
-│ │ └─ collect.py
-│ ├─ comments_ocr/ # collector OCR từ ảnh bình luận
-│ │ └─ collect.py
-│ └─ system_audio/ # collector ghi âm hệ thống (ffmpeg)
-│ └─ collect.py
+│ └─ transcript_collector.py/ # collector lấy transcript YouTube
 │
 ├─ out/ # thư mục output (JSONL + file nhị phân)
 │ ├─ youtube.jsonl
