@@ -1,5 +1,5 @@
 # usage:
-#   python inputs/youtube_transcript/collect.py "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --lang vi,en
+#   python -m inputs.transcript_collector "{youtue-url}" --lang vi,en
 from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
 from argparse import ArgumentParser
 from common.schema import IngestRecord, Segment, append_jsonl
