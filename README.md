@@ -37,7 +37,7 @@ Cài package Python:
 ```bash
 pip install -r requirements.txt
 ```
-Cài VB-CABLE (cho system audio):
+### Cài VB-CABLE (cho system audio):
 
 1. [Tải VB-Audio Cable](https://vb-audio.com/Cable/)
 
@@ -48,7 +48,7 @@ Cài VB-CABLE (cho system audio):
 4. Trong Windows Sound Settings, chọn CABLE Input làm output cho app hoặc toàn hệ thống.
    Collector sẽ thu từ CABLE Output.
    
-Tải mô hình Vosk
+### Tải mô hình Vosk
 Tải mô hình tiếng Việt và giải nén vào `C:\models`
 ```powershell
 New-Item -ItemType Directory -Force C:\models | Out-Null
