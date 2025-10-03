@@ -1,22 +1,26 @@
 # Input Collectors
 
 Repo này chứa các **collector đầu vào** phục vụ pipeline phân tích nội dung.  
-**Nhiệm vụ của repo:** chuẩn hoá việc thu thập dữ liệu từ nhiều nguồn khác nhau (YouTube transcript, ảnh bình luận, audio hệ thống) thành **JSONL** thống nhất.
-
+**Nhiệm vụ của repo:** chuẩn hoá việc thu thập dữ liệu từ nhiều nguồn khác nhau (YouTube transcript, ảnh bình luận, audio hệ thống) thành **JSONL** thống nhất.<br>
+**NOTE:** Video không có transcript(phụ đề) thì không lấy được ://
 
 
 ## 📂 Cấu trúc thư mục
 ```
-input-data-pipline/
+input-data-pipeline/
 ├─ common/ # code dùng chung (schema, utils)
 │ ├─ schema.py # định nghĩa IngestRecord + hàm append_jsonl
 │ └─ utils.py # tiện ích: gen_id, now_iso, youtube_id
 │
 ├─ inputs/
-│ └─ transcript_collector.py/ # collector lấy transcript YouTube
+│ ├─ youtube_transcript.py # collector lấy transcript YouTube
+│ └─ system_audio_collector.py # collector lấy audio từ hệ thống và thực hiện speech2text
 │
 ├─ out/ # thư mục output (JSONL + file nhị phân)
 │ ├─ youtube.jsonl
+│ ├─ audio.jsonl
+│ └─ audio/
+|       └─audio.waw # các audio thu thập được từ hệ thống
 │
 ├─ requirements.txt # thư viện Python cần thiết
 └─ README.md
@@ -28,19 +32,66 @@ input-data-pipline/
 Yêu cầu:
 - Python 3.8+
 - `ffmpeg` cài sẵn trong hệ thống (dùng cho audio collector)
+- Với **system audio collector**: cần **VB-Audio Virtual Cable** để route âm thanh hệ thống
 Cài package Python:
 ```bash
 pip install -r requirements.txt
+```
+Cài VB-CABLE (cho system audio):
+
+1. [Tải VB-Audio Cable](https://vb-audio.com/Cable/)
+
+2. Cài đặt và khởi động lại máy.
+3. Để đảm bảo đã cài đặt thành công vào Control Panel -> Hardware and Sound -> Sound <br>
+   Nếu trong Playback hiện ra thiết bị CABLE Input và Recording hiện ra CABLE Ouput
+
+4. Trong Windows Sound Settings, chọn CABLE Input làm output cho app hoặc toàn hệ thống.
+   Collector sẽ thu từ CABLE Output.
+   
+Tải mô hình Vosk
+Tải mô hình tiếng Việt và giải nén vào `C:\models`
+```powershell
+New-Item -ItemType Directory -Force C:\models | Out-Null
+
+Invoke-WebRequest -Uri "https://alphacephei.com/vosk/models/vosk-model-small-vn-0.4.zip" -OutFile "$env:TEMP\vosk-vn.zip"
+
+Expand-Archive "$env:TEMP\vosk-vn.zip" "C:\models" -Force
+```
+Sau khi chạy, bạn sẽ có thư mục:
+```makefile
+C:\models\vosk-model-small-vn-0.4\
+
+```
+Nếu cần tiếng Anh (US):
+```powershell
+New-Item -ItemType Directory -Force C:\models | Out-Null
+
+Invoke-WebRequest -Uri "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip" -OutFile "$env:TEMP\vosk-en.zip"
+
+Expand-Archive "$env:TEMP\vosk-en.zip" "C:\models" -Force
+```
+Kết quả:
+```makefile
+C:\models\vosk-model-small-en-us-0.15\
 ```
 ## Cách chạy collector
 1. YouTube Transcript
 
 Lấy transcript từ video YouTube (ưu tiên ngôn ngữ vi, fallback en):
 ```bash
-python -m inputs.youtube_transcript.collect "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --lang vi,en
+python -m inputs.transcript_collector "{youtue-url}" --lang vi,en
 ```
-
+2. System Audio (FFmpeg + Vosk)
+Thu và nhận diện âm thanh hệ thống (qua VB-CABLE + FFmpeg + Vosk):
+Ví dụ thu 8 giây tiếng Việt:
+```powershell
+python -m inputs.system_audio_collector --model "C:\models\vosk-model-small-vn-0.4" --sec 8
+```
 Kết quả:
+
+- File WAV: out/audio/aud_xxx.wav
+
+- File JSONL transcript: out/audio.jsonl
 
 - File transcript được ghi vào `out/youtube.jsonl`
 
@@ -64,3 +115,4 @@ Mỗi collector đều xuất record theo schema IngestRecord trong common/schem
   }
 }
 ```
+
