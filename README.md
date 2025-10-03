@@ -2,7 +2,7 @@
 
 Repo này chứa các **collector đầu vào** phục vụ pipeline phân tích nội dung.  
 **Nhiệm vụ của repo:** chuẩn hoá việc thu thập dữ liệu từ nhiều nguồn khác nhau (YouTube transcript, ảnh bình luận, audio hệ thống) thành **JSONL** thống nhất.
-
+**NOTE:** Video không có transcript(phụ đề) thì không lấy được ://
 
 
 ## 📂 Cấu trúc thư mục
