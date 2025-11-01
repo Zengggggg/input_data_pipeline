@@ -26,7 +26,7 @@ input-data-pipeline/
 └─ README.md
 ```
 
-
+Giờ chỉ cần chạy file `main.py` để thu thập url và chuyển sang text trong `youtube.jsonl`
 ## 🛠 Cài đặt
 
 Yêu cầu:
