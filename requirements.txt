@@ -4,5 +4,26 @@ sounddevice>=0.4.6
 soundfile>=0.12.1
 vosk>=0.3.45
 
-# YouTube transcript
-youtube-transcript-api>=0.6.2
+# URLs extractor
+
+# YouTube transcript (bump lên bản mới ổn định)
+youtube-transcript-api>=1.2.3
+
+# --- Download & audio pipeline ---
+# Trình tải đa nền tảng (YouTube, Facebook, v.v.)
+yt-dlp>=2025.10.22
+
+# Ràng buộc/điều khiển FFmpeg qua Python (tùy chọn; vẫn cần FFmpeg cài ngoài hệ thống)
+ffmpeg-python>=0.2.0
+
+# Xử lý audio mức cao (cắt, ghép, chuyển định dạng nhanh)
+pydub>=0.25.1
+
+# Đọc/ghi metadata (ID3/MP4 tags…)
+mutagen>=1.47.0
+
+# Tiện ích
+python-dotenv>=1.0.1
+requests>=2.31.0
+tenacity>=8.2.0
+rich>=13.7.0
