@@ -17,7 +17,7 @@ except ImportError:
 
 OUT_JSONL_DEFAULT = "out/youtube.jsonl"
 AUDIO_DIR_DEFAULT = "out/audio"
-VOSK_MODEL = os.environ.get("VOSK_MODEL", "models/vosk-model-small-vn-v0.4").strip()  # vd: models/vosk-model-small-vi-v0.22
+VOSK_MODEL = os.environ.get("VOSK_MODEL", "models/vosk-model-small-vn-0.4").strip()  # vd: models/vosk-model-small-vi-v0.22
 
 SUPPORTED_EXTS = (".wav", ".mp3", ".m4a", ".aac", ".opus", ".flac", ".ogg")
 
