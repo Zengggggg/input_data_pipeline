@@ -1,0 +1,45 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+dist/
+eggs/
+*.egg-info/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Environment files
+.env
+.env.*
+
+# Logs and output
+out/
+*.log
+AutomationLog.txt
+
+# Python test / coverage
+.pytest_cache/
+coverage/
+
+# IDE/editor settings
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Ignore all __pycache__ folders anywhere
+**/__pycache__/
+
