@@ -3,7 +3,7 @@ import json
 from inputs.url_extractor import get_active_url
 from inputs.transcript_collector import collect_youtube_transcript
 from inputs.youtube_audio_extractor import download_audio
-from inputs.speech_to_text import ensure_wav16k, stt_vosk, build_record_from_file
+from inputs.speech_to_text import ensure_wav16k, speech_to_text_from_file, build_record_from_file
 from inputs.schema import append_jsonl
 from youtube_transcript_api import NoTranscriptFound, TranscriptsDisabled
 
@@ -13,37 +13,34 @@ LAST_RUN = "out/last_run.json"
 
 
 def write_last_run(data: dict, path: str = LAST_RUN):
-    """Overwrite a small JSON file with metadata about the last pipeline run.
-
-    This file is intentionally overwritten on each run so it always reflects the
-    most recent execution (timestamp, url, source, record id, etc.).
-    """
+    """Overwrite a small JSON file with metadata about the last pipeline run."""
     out_dir = os.path.dirname(path)
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, ensure_ascii=False, indent=2)
 
+
 def main():
-    # Bước 1: Lấy URL từ trình duyệt
+    # 1) Lấy URL đang mở
     print("[1/4] Đang lấy URL từ trình duyệt...")
     result = get_active_url()
-    
+
     if "error" in result:
         print(f"❌ Lỗi khi lấy URL: {result['error']}")
         return
-    
+
     url = result.get("url", "")
     title = result.get("title", "")
-    
+
     if not url:
         print("❌ Không lấy được URL từ trình duyệt")
         return
-    
+
     print(f"✓ URL: {url}")
     print(f"✓ Title: {title}\n")
-    
-    # Bước 2: Thử lấy transcript
+
+    # 2) Thử lấy transcript gốc
     print("[2/4] Đang thử lấy transcript từ YouTube...")
     try:
         rec = collect_youtube_transcript(
@@ -51,111 +48,108 @@ def main():
             languages=("vi", "en"),
             out_path=OUT_JSONL,
         )
-        print(f"✓ Đã lấy transcript thành công! ID: {rec.id}")
-        print(f"✓ Text: {rec.text[:100]}..." if rec.text and len(rec.text) > 100 else f"✓ Text: {rec.text}")
 
-        # Ghi file run summary (ghi đè mỗi lần)
-        try:
-            write_last_run({
-                "timestamp": rec.meta.get("created_at"),
-                "url": url,
-                "title": title,
-                "source": "youtube_transcript",
-                "record_id": rec.id,
-                "transcript": getattr(rec, "text", None) or rec.text if hasattr(rec, "text") else None,
-            })
-        except Exception:
-            # Không ngăn chặn luồng chính nếu ghi thất bại
-            pass
+        print(f"✓ Transcript OK! ID: {rec.id}")
+        if rec.text:
+            preview = rec.text[:100] + "..." if len(rec.text) > 100 else rec.text
+            print(f"✓ Text: {preview}")
+
+        write_last_run({
+            "timestamp": rec.meta.get("created_at"),
+            "url": url,
+            "title": title,
+            "source": "youtube_transcript",
+            "record_id": rec.id,
+            "transcript": rec.text,
+        })
 
         return
+
     except (NoTranscriptFound, TranscriptsDisabled) as e:
         print(f"⚠ Không lấy được transcript: {e}")
-        print("→ Chuyển sang phương án tải audio và chuyển đổi sang text...\n")
+        print("→ Chuyển sang tải audio + chuyển giọng nói thành text...\n")
     except Exception as e:
-        print(f"⚠ Lỗi khi lấy transcript: {e}")
-        print("→ Chuyển sang phương án tải audio và chuyển đổi sang text...\n")
-    
-    # Bước 3: Tải audio nếu không lấy được transcript
+        print(f"⚠ Lỗi không xác định khi lấy transcript: {e}")
+        print("→ Chuyển sang tải audio + chuyển giọng nói thành text...\n")
+
+    # 3) Tải audio
     print("[3/4] Đang tải audio từ YouTube...")
+
     try:
-        # Lưu danh sách file hiện có trước khi tải
         existing_files = set()
         if os.path.exists(AUDIO_DIR):
-            existing_files = {f for f in os.listdir(AUDIO_DIR) if os.path.isfile(os.path.join(AUDIO_DIR, f))}
+            existing_files = {
+                f for f in os.listdir(AUDIO_DIR)
+                if os.path.isfile(os.path.join(AUDIO_DIR, f))
+            }
 
-        # Không tải toàn bộ playlist mặc định (tránh lấy audio của cả playlist)
         download_audio(url, outdir=AUDIO_DIR, allow_playlist=False)
 
-        # Tìm file mới nhất sau khi tải
         new_files = []
         if os.path.exists(AUDIO_DIR):
             for f in os.listdir(AUDIO_DIR):
-                filepath = os.path.join(AUDIO_DIR, f)
-                if os.path.isfile(filepath) and f not in existing_files:
-                    new_files.append((filepath, os.path.getmtime(filepath)))
-        
+                fp = os.path.join(AUDIO_DIR, f)
+                if os.path.isfile(fp) and f not in existing_files:
+                    new_files.append((fp, os.path.getmtime(fp)))
+
         if not new_files:
-            # Nếu không tìm thấy file mới, lấy file mới nhất trong thư mục
-            if os.path.exists(AUDIO_DIR):
-                all_files = [
-                    (os.path.join(AUDIO_DIR, f), os.path.getmtime(os.path.join(AUDIO_DIR, f)))
-                    for f in os.listdir(AUDIO_DIR)
-                    if os.path.isfile(os.path.join(AUDIO_DIR, f))
-                ]
-                if all_files:
-                    new_files = [max(all_files, key=lambda x: x[1])]
-        
+            # nếu thư mục không có file mới → lấy file mới nhất
+            all_files = [
+                (os.path.join(AUDIO_DIR, f), os.path.getmtime(os.path.join(AUDIO_DIR, f)))
+                for f in os.listdir(AUDIO_DIR)
+                if os.path.isfile(os.path.join(AUDIO_DIR, f))
+            ]
+            if all_files:
+                new_files = [max(all_files, key=lambda x: x[1])]
+
         if not new_files:
             raise RuntimeError("Không tìm thấy file audio đã tải về")
-        
+
         audio_file = max(new_files, key=lambda x: x[1])[0]
         print(f"✓ Đã tải audio: {os.path.basename(audio_file)}\n")
-        
+
     except Exception as e:
         print(f"❌ Lỗi khi tải audio: {e}")
         return
-    
-    # Bước 4: Chuyển đổi audio sang text
-    print("[4/4] Đang chuyển đổi audio sang text bằng STT...")
+
+    # 4) Speech-to-text
+    print("[4/4] Đang chuyển audio → text bằng Google Speech-to-Text...")
+
     try:
-        # Đảm bảo file là WAV 16k mono
         wav_file = ensure_wav16k(audio_file)
-        print(f"✓ Đã chuẩn hóa audio: {os.path.basename(wav_file)}")
-        
-        # Chạy STT
-        stt_result = stt_vosk(wav_file)
-        print(f"✓ Đã chuyển đổi sang text thành công")
-        print(f"✓ Text: {stt_result['text'][:100]}..." if stt_result['text'] and len(stt_result['text']) > 100 else f"✓ Text: {stt_result['text']}")
-        
-        # Tạo record và lưu vào JSONL
+        print(f"✓ Chuẩn hóa audio: {os.path.basename(wav_file)}")
+
+        stt_text = speech_to_text_from_file(wav_file)
+        print(f"✓ STT thành công")
+        preview = stt_text[:100] + "..." if len(stt_text) > 100 else stt_text
+        print(f"✓ Text: {preview}")
+
+        stt_result = {"text": stt_text}
+
         rec = build_record_from_file(audio_file, stt_result)
         append_jsonl(OUT_JSONL, rec)
 
-        # Ghi file run summary (ghi đè mỗi lần)
-        try:
-            write_last_run({
-                "timestamp": rec.meta.get("created_at"),
-                "url": url,
-                "title": title,
-                "source": "stt_vosk",
-                "record_id": rec.id,
-                "audio_file": os.path.basename(audio_file),
-                "transcript": stt_result.get("text") if isinstance(stt_result, dict) else None,
-            })
-        except Exception:
-            pass
+        write_last_run({
+            "timestamp": rec.meta.get("created_at"),
+            "url": url,
+            "title": title,
+            "source": "google_stt",
+            "record_id": rec.id,
+            "audio_file": os.path.basename(audio_file),
+            "transcript": stt_text,
+        })
 
-        print(f"✓ Đã lưu kết quả vào {OUT_JSONL}")
+        print(f"✓ Lưu file JSONL → {OUT_JSONL}")
         print(f"✓ Record ID: {rec.id}")
-        
+
     except Exception as e:
-        print(f"❌ Lỗi khi chuyển đổi audio sang text: {e}")
+        print(f"❌ Lỗi khi chạy STT: {e}")
         import traceback
         traceback.print_exc()
         return
-    
+
     print("\n✅ Hoàn thành!")
+
 
 if __name__ == "__main__":
     main()

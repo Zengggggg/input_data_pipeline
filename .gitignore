@@ -1,5 +1,5 @@
 # Byte-compiled / optimized / DLL files
-__pycache__/
+@AutomationLog.txt
 *.py[cod]
 *$py.class
 
@@ -41,5 +41,21 @@ coverage/
 Thumbs.db
 
 # Ignore all __pycache__ folders anywhere
+__pycache__/
 **/__pycache__/
+*.pyc
+# ---------------------------
+# Google Cloud credentials
+# ---------------------------
+# Thư mục chứa key JSON
+secrets/
+secrets/*.json
 
+# Phòng trường hợp key nằm sai chỗ
+**/gcloud*.json
+**/google*.json
+**/*credentials*.json
+**/*service-account*.json
+
+# Không bao giờ commit credentials
+# ---------------------------

@@ -1,174 +1,130 @@
-# inputs/local_audio_stt_collector.py
-# Quét thư mục audio -> (convert wav 16k mono nếu cần) -> STT (Vosk) -> append out/youtube.jsonl
-# Chạy:
-#   cd <project_root> && py -3.11 -m inputs.local_audio_stt_collector
+import os
+import uuid
+from datetime import datetime
+from pydub import AudioSegment
+from google.cloud import speech_v1p1beta1 as speech
+from inputs.schema import IngestRecord
+import pathlib
+from dotenv import load_dotenv
 
-from __future__ import annotations
-import os, json, subprocess, wave, shutil
-from typing import List, Optional, Dict, Any
+load_dotenv()
 
-# --- package-safe imports ---
-try:
-    from .schema import IngestRecord, Segment, append_jsonl
-    from .utils import gen_id, now_iso
-except ImportError:
-    from schema import IngestRecord, Segment, append_jsonl
-    from utils import gen_id, now_iso
-
-OUT_JSONL_DEFAULT = "out/youtube.jsonl"
-AUDIO_DIR_DEFAULT = "out/audio"
-VOSK_MODEL = os.environ.get("VOSK_MODEL", "models/vosk-model-small-vn-0.4").strip()  # vd: models/vosk-model-small-vi-v0.22
-
-SUPPORTED_EXTS = (".wav", ".mp3", ".m4a", ".aac", ".opus", ".flac", ".ogg")
+# Kiểm tra biến môi trường
+if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+    raise RuntimeError("Missing GOOGLE_APPLICATION_CREDENTIALS in .env")
 
 
-# ---------- Helpers ----------
-def list_audio_files(root: str, exts: tuple = SUPPORTED_EXTS) -> List[str]:
-    files: List[str] = []
-    for dirpath, _, filenames in os.walk(root):
-        for name in filenames:
-            if name.lower().endswith(exts):
-                files.append(os.path.join(dirpath, name))
-    return sorted(files)
+# ----------------------------------------------------
+# 1) Chuẩn hóa audio về WAV 16kHz mono
+# ----------------------------------------------------
+def ensure_wav16k(path: str) -> str:
+    ext = os.path.splitext(path)[1].lower()
 
-def has_ffmpeg() -> bool:
-    return shutil.which("ffmpeg") is not None
-
-def ensure_wav16k(input_path: str) -> str:
-    """
-    Trả về đường dẫn WAV mono 16k s16 tương ứng với input.
-    Nếu input đã đúng chuẩn, trả về chính nó.
-    Nếu không, dùng ffmpeg tạo file <stem>.stt.wav cạnh file gốc.
-    """
-    # Nếu đã là .wav, thử kiểm tra header xem đúng chuẩn chưa
-    if input_path.lower().endswith(".wav"):
-        try:
-            with wave.open(input_path, "rb") as wf:
-                if wf.getnchannels() == 1 and wf.getsampwidth() == 2 and wf.getframerate() == 16000:
-                    return input_path
-        except Exception:
-            pass  # sẽ convert lại
-
-    if not has_ffmpeg():
-        raise RuntimeError("Cần FFmpeg trong PATH để convert audio về WAV 16k mono.")
-
-    base, _ = os.path.splitext(input_path)
-    out_wav = f"{base}.stt.wav"
-    cmd = [
-        "ffmpeg", "-y", "-i", input_path,
-        "-ac", "1", "-ar", "16000", "-sample_fmt", "s16",
-        out_wav
-    ]
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return out_wav
-
-def _load_vosk_model(model_dir: Optional[str]) :
-    model_dir = model_dir or VOSK_MODEL
-    if not model_dir:
-        raise RuntimeError("Chưa cấu hình VOSK_MODEL (env) và chưa truyền model_dir.")
-    if not os.path.isdir(model_dir):
-        raise RuntimeError(f"Không tìm thấy thư mục Vosk model: {model_dir}")
-    from vosk import Model
-    return Model(model_dir)
-
-def stt_vosk(wav_path: str, model_dir: Optional[str] = None) -> Dict[str, Any]:
-    from vosk import KaldiRecognizer
-    model = _load_vosk_model(model_dir)
-    segments: List[Segment] = []
-
-    with wave.open(wav_path, "rb") as wf:
-        if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getframerate() != 16000:
-            raise RuntimeError("WAV phải là mono, 16-bit, 16kHz.")
-        rec = KaldiRecognizer(model, wf.getframerate())
-        rec.SetWords(True)
-
-        def flush(res_json: str):
-            if not res_json: return
-            try:
-                obj = json.loads(res_json)
-            except Exception:
-                return
-            if "result" in obj and obj["result"]:
-                words = obj["result"]
-                start = words[0]["start"]
-                end = words[-1]["end"]
-                text = obj.get("text", "").strip()
-                segments.append(Segment(start=float(start), duration=float(end - start), text=text))
-
-        buf = 4000
-        while True:
-            data = wf.readframes(buf)
-            if not data: break
-            if rec.AcceptWaveform(data):
-                flush(rec.Result())
-            # else: rec.PartialResult()  # bỏ qua
-
-        flush(rec.FinalResult())
-
-    full_text = " ".join(seg.text for seg in segments if seg.text).strip()
-    return {"text": full_text, "segments": segments}
-
-def build_record_from_file(src_path: str, stt: Dict[str, Any]) -> IngestRecord:
-    fname = os.path.basename(src_path)
     try:
-        # tính duration nếu là wav
-        dur = None
-        if src_path.lower().endswith(".wav"):
-            with wave.open(src_path, "rb") as wf:
-                dur = wf.getnframes() / float(wf.getframerate())
-    except Exception:
-        dur = None
+        if ext == ".wav":
+            audio = AudioSegment.from_wav(path)
+            if audio.frame_rate == 16000 and audio.channels == 1:
+                return path
+    except:
+        pass
 
-    rec = IngestRecord(
-        id=gen_id("stt"),
-        source_type="stt_local_audio",
-        text=stt["text"],
-        segments=stt["segments"],
-        meta={
-            "file_name": fname,
-            "file_path": os.path.abspath(src_path),
-            "duration": dur,
-            "created_at": now_iso(),
-            "engine": "vosk",
-        },
-    )
-    return rec
+    audio = AudioSegment.from_file(path)
+    audio = audio.set_frame_rate(16000).set_channels(1)
+
+    out_path = path.rsplit(".", 1)[0] + "_16k.wav"
+    audio.export(out_path, format="wav")
+    return out_path
 
 
-# ---------- Batch ----------
-def stt_from_folder(
-    folder: str = AUDIO_DIR_DEFAULT,
-    out_jsonl: str = OUT_JSONL_DEFAULT,
-    model_dir: Optional[str] = None,
-):
-    os.makedirs(os.path.dirname(out_jsonl) or ".", exist_ok=True)
-    files = list_audio_files(folder)
-    if not files:
-        print(f"Không tìm thấy audio trong: {folder}")
-        return
+# ----------------------------------------------------
+# 2) Chia audio theo thời gian (đảm bảo < 1 phút)
+# ----------------------------------------------------
+def split_audio_chunks(wav_file: str, chunk_ms: int = 50000) -> list[str]:
+    """
+    Chia audio thành các file WAV dài tối đa chunk_ms.
+    chunk_ms = 50000ms = 50s < 60s (Google STT Sync limit)
+    """
+    audio = AudioSegment.from_wav(wav_file)
+    chunks = []
 
-    ok, fail = 0, 0
-    print(f"Found {len(files)} file(s) in {folder}. Bắt đầu STT…")
-    for path in files:
+    duration = len(audio)
+    index = 0
+
+    while index < duration:
+        chunk = audio[index:index + chunk_ms]
+        chunk_path = f"{wav_file.rsplit('.',1)[0]}_chunk{len(chunks)}.wav"
+        chunk.export(chunk_path, format="wav")
+        chunks.append(chunk_path)
+        index += chunk_ms
+
+    return chunks
+
+
+# ----------------------------------------------------
+# 3) Google STT (sync) → text
+# ----------------------------------------------------
+def speech_to_text_from_file(wav_file: str) -> dict:
+    client = speech.SpeechClient()
+    full_text = ""
+
+    # LUÔN chia theo thời gian, không chia theo dung lượng file
+    chunks = split_audio_chunks(wav_file)
+
+    for idx, chunk_path in enumerate(chunks, 1):
+        print(f"[chunk {idx}/{len(chunks)}] Đang STT: {os.path.basename(chunk_path)}")
+
         try:
-            wav = ensure_wav16k(path)
-            stt = stt_vosk(wav, model_dir=model_dir)
-            rec = build_record_from_file(path, stt)
-            append_jsonl(out_jsonl, rec)
-            print(f"[OK] {os.path.basename(path)} → id={rec.id}")
-            ok += 1
+            with open(chunk_path, "rb") as f:
+                audio_content = f.read()
+
+            audio = speech.RecognitionAudio(content=audio_content)
+            config = speech.RecognitionConfig(
+                encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+                sample_rate_hertz=16000,
+                language_code="vi-VN",
+                enable_automatic_punctuation=True,
+            )
+
+            response = client.recognize(config=config, audio=audio)
+
+            text_chunk = " ".join([r.alternatives[0].transcript for r in response.results])
+            full_text += " " + text_chunk
+
         except Exception as e:
-            print(f"[ERR] {os.path.basename(path)} → {e}")
-            fail += 1
-    print(f"==> DONE. OK={ok}, FAIL={fail}. Saved to {out_jsonl}")
+            print("❌ Lỗi chunk:", e)
+
+        finally:
+            if os.path.exists(chunk_path):
+                os.remove(chunk_path)
+
+    return {"text": full_text.strip()}
 
 
-# ---------- Interactive ----------
-def main_interactive():
-    folder = AUDIO_DIR_DEFAULT
-    out_jsonl =  OUT_JSONL_DEFAULT
-    model_dir =  None
-    stt_from_folder(folder=folder, out_jsonl=out_jsonl, model_dir=model_dir)
+# ----------------------------------------------------
+# 4) Build record để lưu JSONL
+# ----------------------------------------------------
+def build_record_from_file(audio_path: str, stt_result):
+    print("STT RAW:", stt_result, type(stt_result))  # ❗ Debug
 
-if __name__ == "__main__":
-    main_interactive()
+    # Nếu stt_result là dict
+    if isinstance(stt_result, dict):
+        # trường hợp bị lồng dict {'text': {'text': 'Cũng được.'}}
+        if isinstance(stt_result.get("text"), dict):
+            text = stt_result["text"].get("text", "")
+        else:
+            text = stt_result.get("text", "")
+
+    # Nếu là string → parse bằng ast
+    else:
+        import ast
+        stt_dict = ast.literal_eval(stt_result)
+        text = stt_dict.get("text", "")
+
+    return IngestRecord(
+        id=str(pathlib.Path(audio_path).stem),
+        source_type="audio",
+        text=text,
+        binary_path=str(audio_path),
+        segments=None,
+        meta={}
+    )
